@@ -6,17 +6,22 @@ var httpget = require('http-get');
 var cheerio = require('cheerio');
 var url = require('url');
 var inspect 	= require('util').inspect
+var fs = require('fs');
 
 
 
 var stop = false;
-var count = 9000;
+var count = 0;
+
+var threads = 0;
+
 
 async.whilst(
     function () { return !stop; },
     function (callback) {
-    	console.log("jan" + count + "@neat.be");
-       	test("jan" + count + "@neat.be", function (err, url) {
+    	var email = "bamy" + count + "@neat.be";
+    	threads++;
+       	test(email, function (err, url) {
        		if(err){
        			console.log(err.stack);
        			stop = true;
@@ -24,16 +29,29 @@ async.whilst(
        			console.log("Found valid url: " + url);
        			stop = true;
        		}
+       		threads--;     		
+       	});
 
-       		count++;
-
-       		callback();
+       	waitForThreads(100, function(){
+			count++;
+	       	callback();
        	});
     },
     function (err) {
       	// done
     }
 );
+
+
+function waitForThreads(maxThreads, callback) {
+	if(threads < maxThreads){
+		callback();
+	}else{
+		setTimeout(function(){
+			waitForThreads(maxThreads, callback);
+		}, 400);
+	}
+}
 
 
 
@@ -52,15 +70,24 @@ function test (email, callback) {
 		function (err, htmlbody) {
 			if(err) callback(err);
 			else{
-				//console.log(htmlbody);
-				//console.log(htmlbody.indexOf("Jammer"));
+				console.log("tried " + email);
 
 				if(htmlbody.indexOf("Jammer") == -1){
+
+					fs.writeFile("winningpage.html", htmlbody, function(err) {
+					    if(err) {
+					        console.log(err);
+					    } else {
+					        console.log("The file was saved!");
+					    }
+					}); 
+
 					var $ = cheerio.load(htmlbody);
 					var url = $("form").attr("action");
 
 					callback(null, url);
 				}else{
+
 					callback(null, null);
 				}
 			}
