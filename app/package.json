@@ -1,0 +1,10 @@
+{
+  "name": "HLN-iphone5-wedstrijd",
+  "version": "0.0.0",
+  "dependencies": {
+    "step": "*",
+    "async": "*",
+    "http-get": "*",
+    "cheerio": "*"
+  }
+}
