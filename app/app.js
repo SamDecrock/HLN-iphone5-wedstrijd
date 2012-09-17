@@ -8,39 +8,95 @@ var url = require('url');
 var inspect 	= require('util').inspect
 var fs = require('fs');
 
-
-
-var stop = false;
-var count = 0;
-
 var threads = 0;
 
 
-async.whilst(
-    function () { return !stop; },
-    function (callback) {
-    	var email = "bamy" + count + "@neat.be";
-    	threads++;
-       	test(email, function (err, url) {
-       		if(err){
-       			console.log(err.stack);
-       			stop = true;
-       		}else if(url != null){
-       			console.log("Found valid url: " + url);
-       			stop = true;
-       		}
-       		threads--;     		
-       	});
+/**
+ * Deze PoC laat toe om mee te spelen met de HLN iPhone 5 quiz en het winnend formulier direct in te vullen
+ *
+ * Node.js en bovenstaande packages zijn vereist.
+ */
 
-       	waitForThreads(100, function(){
-			count++;
-	       	callback();
-       	});
-    },
-    function (err) {
-      	// done
-    }
-);
+var settings = {
+	getEmail: function (counter) {
+		return "name" + counter + "@xxx.be"; // email patroon
+	},
+
+	getFormdata: function(email, bonusquestion) {
+		return {
+			'MAIL'			: email,
+			'GENDER'		: 'M', 				// geslacht
+			'FIRST_NAME'	: '', 				// voornaam
+			'NAME'			: '',				// familienaam
+			'STREET'		: '',				// straat
+			'HOUSENO'		: 0,				// huisnummer
+			'HOUSENOEXT1'	: 0,				// busnummer
+			'ZIPCODE'		: 0,				// postcode
+			'CITY'			: '',				// stad
+			'SELECTOR'		: '',				// geboortedatum vb 31+12+1995
+			'BIRTH_DATE'	: '',				// geboortedatum vb 1995-12-31
+			'MOBILE_NUMBER'	: '',				// telefoonnummer
+			'Q'				: 1,				// antwoord op de vraag selectie
+			'SQ'			: bonusquestion,
+			'SUBMIT'		: 'Verzend'
+		}
+	}
+}
+
+// 10 is het max aantal keer dat je wil winnen
+start(10);
+
+
+
+
+
+
+
+
+
+
+function start (maxWinnings) {
+
+	var stop = false;
+	var count = 0;
+	var winnings = 0;
+
+	async.whilst(
+	    function () { return !stop; },
+	    function (callback) {
+	    	var email = settings.getEmail(count);
+	    	threads++;
+
+	       	playOnce(email, function (err, success) {
+	       		if(err){
+	       			console.log(err.stack);
+	       			stop = true;
+	       		}else if(success){
+	       			winnings++;
+	       			if(winnings >= maxWinnings){
+		       			console.log("Achieved " + winnings + " STOPPING...");
+		       			stop = true;
+		       		}
+	       		}
+	       		threads--;
+
+	       		//count++;
+	       		//callback();  		
+	       	});
+
+
+
+	       	waitForThreads(100, function(){
+				count++;
+		       	callback();
+	       	});
+	    },
+	    function (err) {
+	      	console.log("Stopped!");
+	    }
+	);
+
+}
 
 
 function waitForThreads(maxThreads, callback) {
@@ -55,7 +111,10 @@ function waitForThreads(maxThreads, callback) {
 
 
 
-function test (email, callback) {
+function playOnce (email_, callback) {
+	var email = email_;
+	var bonusquestion;
+
 	Step(
 		function () {
 			getFormUrl(this);
@@ -64,33 +123,91 @@ function test (email, callback) {
 		function (err, url) {
 			if(err) throw err;
 
-			play(url, email, this);
+			var options = {
+				'INVITE': '',
+				'SOURCE': '',
+				'MAIL': email,
+				'OPTIN': 0
+			}
+
+			doPost(url, options, this);
 		},
 
 		function (err, htmlbody) {
-			if(err) callback(err);
-			else{
-				console.log("tried " + email);
+			if(err) throw err;
 
-				if(htmlbody.indexOf("Jammer") == -1){
+			console.log("tried " + email);
 
-					fs.writeFile("winningpage.html", htmlbody, function(err) {
-					    if(err) {
-					        console.log(err);
-					    } else {
-					        console.log("The file was saved!");
-					    }
-					}); 
+			//If goeie pagina:
+			if(htmlbody.indexOf("Jammer") == -1){
 
-					var $ = cheerio.load(htmlbody);
-					var url = $("form").attr("action");
+				var winningpage = "winningpage"+email+".html";
+				fs.writeFile(winningpage, htmlbody, function(err) {
+				    if(err) {
+				        console.log(err.stack);
+				    } else {
+				        console.log("Saved " + winningpage);
+				    }
+				});
 
-					callback(null, url);
-				}else{
-
-					callback(null, null);
-				}
+				this(null, htmlbody);
+			}else{
+				this(null, null);
 			}
+
+		},
+
+
+		function (err, winningbody) {
+			if(err) throw err;
+
+			if(winningbody) {
+
+	  			var $ = cheerio.load(winningbody);
+				var div = $("#container #left").html();
+
+				var start = div.indexOf("FORM") + 27;
+				var stop = div.indexOf(">", start) -1 ;
+
+				var postUrl = div.substring(start, stop);
+
+				console.log(postUrl);
+
+
+				//Posting my data to the url:
+				bonusquestion = Math.floor(Math.random()*8000) + 367; // some random number betwen 367 and 8367
+
+				var options = settings.getFormdata(email, bonusquestion);
+
+				doPost(postUrl, options, this);
+
+			}else{
+				this(null, null);
+			}
+		},
+
+		function (err, thanksbody) {
+			if(err) throw err;
+
+			if (thanksbody) {
+				
+				var filledinpage = "filledinpage" + email + "_" + bonusquestion + ".html";
+   				fs.writeFile(filledinpage, thanksbody, function(err) {
+				    if(err) {
+				        console.log(err);
+				    } else {
+				        console.log("Filled in and saved page to " + filledinpage);
+				    }
+				})
+
+				this(null, true);
+			}else{
+				this(null, false);
+			}
+		},
+
+		function (err, success) {
+			callback(err, success);
 		}
 	);
 }
@@ -117,19 +234,11 @@ function getFormUrl (callback) {
 }
 
 
-function play(urlString, email, callback) {
 
+function doPost(urlString, options, callback) {
 	var response = "";
 
-
 	var reqUrl = url.parse(urlString);
-
-	var options = {
-		'INVITE': '',
-		'SOURCE': '',
-		'MAIL': email,
-		'OPTIN': 0
-	}
 
 	var params = querystring.stringify(options);
 
@@ -162,5 +271,5 @@ function play(urlString, email, callback) {
 
 	post_req.write(params);
 	post_req.end();
-
 }
+
